@@ -3,212 +3,860 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>🏃 PITFALL!</title>
+    <title>🏃 PITFALL! JUNGLE EDITION</title>
     <style>
-        body { margin:0; padding:10px; background:#1a1a2e; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:Arial; }
-        .game { text-align:center; background:#16213e; padding:15px; border-radius:20px; }
-        canvas { border:3px solid #e94560; border-radius:10px; touch-action:none; }
-        .btns { margin-top:15px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-        button { width:70px; height:70px; font-size:30px; background:#0f3460; color:white; border:3px solid #e94560; border-radius:15px; touch-action:manipulation; }
-        .stats { color:white; font-size:18px; margin-bottom:10px; display:flex; justify-content:space-between; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { 
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            padding: 10px;
+        }
+        .game-container {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            border: 2px solid #3d5a3d;
+        }
+        canvas {
+            border-radius: 20px;
+            display: block;
+            margin: 0 auto;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+            touch-action: none;
+            cursor: pointer;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 20px;
+            color: #ffd700;
+            font-size: 22px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+            background: rgba(0,0,0,0.3);
+            border-radius: 50px;
+            margin-bottom: 10px;
+        }
+        .stats span { color: #fff; }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 15px;
+        }
+        button {
+            width: 85px;
+            height: 85px;
+            font-size: 40px;
+            font-weight: bold;
+            background: linear-gradient(145deg, #2a4a2a, #1a3a1a);
+            color: white;
+            border: 3px solid #5a8a5a;
+            border-radius: 25px;
+            box-shadow: 0 8px 0 #0a1a0a, 0 10px 20px rgba(0,0,0,0.3);
+            transition: all 0.05s;
+            touch-action: manipulation;
+        }
+        button:active {
+            transform: translateY(6px);
+            box-shadow: 0 2px 0 #0a1a0a, 0 5px 10px rgba(0,0,0,0.3);
+        }
+        .restart-btn {
+            width: auto;
+            padding: 0 30px;
+            font-size: 20px;
+            margin-top: 15px;
+        }
+        .title {
+            text-align: center;
+            color: #ffd700;
+            font-size: 28px;
+            margin-bottom: 8px;
+            text-shadow: 3px 3px 0 #000;
+            letter-spacing: 5px;
+        }
     </style>
 </head>
 <body>
-<div class="game">
-    <div class="stats"><span>❤️ <span id="lives">3</span></span><span>💰 <span id="score">0000</span></span></div>
-    <canvas id="gameCanvas" width="600" height="300"></canvas>
-    <div class="btns">
+<div class="game-container">
+    <div class="title">🏃 PITFALL! 🐊</div>
+    <div class="stats">
+        <div>❤️ <span id="lives">3</span></div>
+        <div>💰 <span id="score">0000</span></div>
+    </div>
+    <canvas id="gameCanvas" width="700" height="350"></canvas>
+    <div class="controls">
         <button id="leftBtn">←</button>
         <button id="jumpBtn">⬆️</button>
         <button id="rightBtn">→</button>
     </div>
-    <button id="restartBtn" style="width:auto; height:45px; font-size:16px; margin-top:10px;">🔄 Заново</button>
+    <div style="display: flex; justify-content: center;">
+        <button id="restartBtn" class="restart-btn">🔄 НОВАЯ ИГРА</button>
+    </div>
 </div>
+
 <script>
-// ========== PITFALL! ==========
+// ============================================
+// PITFALL! - ПОЛНАЯ ВЕРСИЯ
+// С физикой, крокодилами, анимациями и деревьями
+// ============================================
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 300, GROUND = 260;
+
+const W = 700, H = 350;
+const GROUND_Y = 300;      // Земля
+const WATER_Y = 325;       // Вода (ниже земли!)
 
 let game = {
-    player: { x:100, y:GROUND-35, vy:0, w:25, h:35, onGround:true },
-    lives:3, score:0, camX:0, over:false, win:false
+    player: {
+        x: 80, y: GROUND_Y - 40, vx: 0, vy: 0,
+        width: 22, height: 38,
+        onGround: false, inWater: false,
+        facing: 1, // 1 = вправо, -1 = влево
+        invulnerable: 0,
+        fallingInWater: false,
+        waterFallProgress: 0
+    },
+    lives: 3,
+    score: 0,
+    cameraX: 0,
+    gameOver: false,
+    win: false
 };
 
-let world = { plats:[], pits:[], vines:[], enemies:[], treasure:null };
-const keys = { left:false, right:false };
+let world = {
+    platforms: [],
+    pits: [],
+    waterPits: [],
+    vines: [],
+    crocodiles: [],
+    trees: [],
+    treasure: null
+};
 
-// Генерация
-function gen() {
-    world = { plats:[], pits:[], vines:[], enemies:[], treasure:null };
+const keys = { left: false, right: false };
+
+// ========== ГЕНЕРАЦИЯ МИРА ==========
+function generateWorld() {
+    world = { platforms: [], pits: [], waterPits: [], vines: [], crocodiles: [], trees: [], treasure: null };
+    
     let x = 0;
-    while (x < 2500) {
-        if (Math.random() < 0.15 && x > 200) {
-            let w = 40 + Math.floor(Math.random()*50);
-            world.pits.push({ x, y:GROUND, w });
-            x += w;
+    const endX = 2800;
+    
+    // Генерируем деревья на фоне
+    for (let i = 0; i < 30; i++) {
+        world.trees.push({
+            x: 50 + i * 120 + Math.random() * 80,
+            type: Math.floor(Math.random() * 3),
+            scale: 0.7 + Math.random() * 0.6
+        });
+    }
+    
+    while (x < endX) {
+        const r = Math.random();
+        
+        if (r < 0.18 && x > 200) {
+            // Яма с водой
+            const width = 45 + Math.floor(Math.random() * 55);
+            world.waterPits.push({ 
+                x, 
+                y: GROUND_Y + 2, 
+                width,
+                waterLevel: WATER_Y
+            });
+            x += width;
+        } else if (r < 0.3 && x > 150) {
+            // Сухая яма
+            const width = 35 + Math.floor(Math.random() * 40);
+            world.pits.push({ x, y: GROUND_Y + 2, width });
+            x += width;
         } else {
-            let w = 80 + Math.floor(Math.random()*120);
-            world.plats.push({ x, y:GROUND, w, h:20 });
-            if (Math.random() < 0.2 && x > 300) world.vines.push({ x: x+w/2, y:GROUND-100, h:80 });
-            if (Math.random() < 0.15 && w > 100) world.enemies.push({ x:x+40, y:GROUND-20, w:40, h:18, dir:1, startX:x+40, range:60 });
-            x += w;
+            // Платформа
+            const width = 70 + Math.floor(Math.random() * 130);
+            world.platforms.push({ 
+                x, y: GROUND_Y, 
+                width, height: 15 
+            });
+            
+            // Лиана
+            if (Math.random() < 0.2 && x > 300) {
+                const vineX = x + width / 2;
+                const vineH = 70 + Math.floor(Math.random() * 60);
+                world.vines.push({ x: vineX, y: GROUND_Y - vineH, height: vineH });
+            }
+            
+            // Крокодил
+            if (Math.random() < 0.12 && width > 90) {
+                world.crocodiles.push({
+                    x: x + 30 + Math.random() * (width - 70),
+                    y: GROUND_Y - 18,
+                    width: 50,
+                    height: 16,
+                    dir: Math.random() > 0.5 ? 1 : -1,
+                    startX: x + 30,
+                    range: 80,
+                    tailPhase: Math.random() * Math.PI * 2,
+                    legPhase: Math.random() * Math.PI * 2
+                });
+            }
+            
+            x += width;
         }
     }
-    world.treasure = { x:2400, y:GROUND-35, w:35, h:30, taken:false };
+    
+    world.treasure = { 
+        x: endX - 120, 
+        y: GROUND_Y - 40, 
+        width: 40, 
+        height: 35, 
+        collected: false,
+        glowPhase: 0
+    };
 }
 
-// Обновление
-function upd() {
-    if (game.over || game.win) return;
-    let p = game.player;
-    p.vy += 0.5; p.y += p.vy; p.onGround = false;
+// ========== ФИЗИКА ==========
+function update(dt = 1) {
+    if (game.gameOver || game.win) return;
     
-    world.plats.forEach(pl => {
-        if (p.x < pl.x+pl.w && p.x+p.w > pl.x && p.y+p.h > pl.y && p.y+p.h < pl.y+pl.h+10 && p.vy >= 0)
-            { p.y = pl.y-p.h; p.vy = 0; p.onGround = true; }
-    });
+    const p = game.player;
     
-    if (keys.left) p.x -= 4;
-    if (keys.right) p.x += 4;
-    p.x = Math.max(0, Math.min(p.x, 2500-p.w));
-    
-    world.enemies.forEach(e => {
-        e.x += e.dir*1.5;
-        if (Math.abs(e.x-e.startX) > e.range) e.dir *= -1;
-        if (!p.invuln && p.x<e.x+e.w && p.x+p.w>e.x && p.y<e.y+e.h && p.y+p.h>e.y) {
-            game.lives--; p.invuln=true; setTimeout(()=>p.invuln=false,1000);
-            p.x=100; p.y=GROUND-35; if (game.lives<=0) game.over=true;
+    // Если падаем в воду - специальная анимация
+    if (p.fallingInWater) {
+        p.waterFallProgress += 0.05;
+        if (p.waterFallProgress >= 1) {
+            die();
         }
-    });
+        return;
+    }
     
-    world.pits.forEach(pit => {
-        if (p.x+p.w > pit.x && p.x < pit.x+pit.w && p.y+p.h >= GROUND) {
-            game.lives--; p.x=100; p.y=GROUND-35; p.vy=0; if (game.lives<=0) game.over=true;
+    // Горизонтальное движение (инерция)
+    if (keys.left) {
+        p.vx = Math.max(p.vx - 1.2, -6);
+        p.facing = -1;
+    }
+    if (keys.right) {
+        p.vx = Math.min(p.vx + 1.2, 6);
+        p.facing = 1;
+    }
+    
+    // Трение
+    p.vx *= 0.82;
+    
+    // Гравитация
+    p.vy += 0.55;
+    
+    // Применяем скорость
+    p.x += p.vx;
+    p.y += p.vy;
+    
+    p.onGround = false;
+    p.inWater = false;
+    
+    // Коллизия с платформами
+    for (const pl of world.platforms) {
+        if (p.x < pl.x + pl.width && p.x + p.width > pl.x) {
+            // Приземление сверху
+            if (p.y + p.height > pl.y && p.y + p.height < pl.y + pl.height + 15 && p.vy >= 0) {
+                p.y = pl.y - p.height;
+                p.vy = 0;
+                p.vx *= 0.95; // Трение о землю
+                p.onGround = true;
+            }
+            // Удар головой
+            if (p.y < pl.y + pl.height && p.y > pl.y && p.vy < 0) {
+                p.y = pl.y + pl.height;
+                p.vy = 0;
+            }
         }
-    });
+    }
     
-    let t = world.treasure;
-    if (t && !t.taken && p.x<t.x+t.w && p.x+p.w>t.x && p.y<t.y+t.h && p.y+p.h>t.y)
-        { t.taken=true; game.score+=1000; game.win=true; }
+    // Проверка падения в ямы с водой
+    for (const pit of world.waterPits) {
+        if (p.x + p.width > pit.x + 5 && p.x < pit.x + pit.width - 5) {
+            if (p.y + p.height >= GROUND_Y + 5 && p.y + p.height < WATER_Y) {
+                // Падаем в воду!
+                p.fallingInWater = true;
+                p.waterFallProgress = 0;
+                p.vx = 0;
+                p.vy = 0;
+            }
+        }
+    }
     
-    game.camX = Math.max(0, Math.min(p.x-200, 2500-W));
-    document.getElementById('lives').textContent = game.lives;
-    document.getElementById('score').textContent = String(game.score).padStart(4,'0');
-}
-
-// Отрисовка
-function draw() {
-    ctx.clearRect(0,0,W,H);
-    let cam = game.camX;
-    // Небо
-    let grad = ctx.createLinearGradient(0,0,0,H);
-    grad.addColorStop(0,'#87CEEB'); grad.addColorStop(1,'#E0F0FF');
-    ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
-    // Солнце
-    ctx.fillStyle='#FFD700'; ctx.beginPath(); ctx.arc(500-cam*0.1,50,35,0,Math.PI*2); ctx.fill();
+    // Проверка падения в сухие ямы
+    for (const pit of world.pits) {
+        if (p.x + p.width > pit.x + 5 && p.x < pit.x + pit.width - 5) {
+            if (p.y + p.height >= GROUND_Y + 5) {
+                die();
+            }
+        }
+    }
     
-    // Платформы
-    world.plats.forEach(p => {
-        ctx.fillStyle='#8B4513'; ctx.fillRect(p.x-cam, p.y, p.w, p.h);
-        ctx.fillStyle='#228B22'; ctx.fillRect(p.x-cam, p.y-3, p.w, 5);
-    });
-    // Ямы
-    world.pits.forEach(p => {
-        ctx.fillStyle='#1a1a2e'; ctx.fillRect(p.x-cam, p.y, p.w, 40);
-        ctx.fillStyle='#1E90FF'; ctx.fillRect(p.x-cam, p.y+10, p.w, 15);
-    });
-    // Враги
-    world.enemies.forEach(e => {
-        ctx.fillStyle='#006400'; ctx.fillRect(e.x-cam, e.y, e.w, e.h);
-        ctx.fillStyle='#FFFF00'; ctx.beginPath(); ctx.arc(e.x-cam+10, e.y+6, 4, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(e.x-cam+(e.dir>0?12:8), e.y+6, 2, 0, Math.PI*2); ctx.fill();
-    });
+    // Границы мира
+    p.x = Math.max(10, Math.min(p.x, 2800 - p.width));
+    
+    // Падение за пределы экрана
+    if (p.y > H + 50) {
+        die();
+    }
+    
+    // Крокодилы
+    if (p.invulnerable <= 0) {
+        for (const c of world.crocodiles) {
+            // Движение крокодила
+            c.x += c.dir * 1.8;
+            if (Math.abs(c.x - c.startX) > c.range) {
+                c.dir *= -1;
+            }
+            
+            // Анимация
+            c.tailPhase += 0.15;
+            c.legPhase += 0.2;
+            
+            // Коллизия с игроком
+            if (p.x < c.x + c.width - 10 && p.x + p.width > c.x + 10 &&
+                p.y + p.height > c.y && p.y < c.y + c.height) {
+                die();
+            }
+        }
+    }
+    
     // Сокровище
-    let t = world.treasure;
-    if (t && !t.taken) {
-        ctx.fillStyle='#8B4513'; ctx.fillRect(t.x-cam, t.y, t.w, t.h);
-        ctx.fillStyle='#FFD700'; ctx.beginPath(); ctx.arc(t.x-cam+t.w/2, t.y-2, 5, 0, Math.PI*2); ctx.fill();
+    const t = world.treasure;
+    if (t && !t.collected) {
+        t.glowPhase += 0.05;
+        if (p.x < t.x + t.width && p.x + p.width > t.x &&
+            p.y < t.y + t.height && p.y + p.height > t.y) {
+            t.collected = true;
+            game.score += 1000;
+            game.win = true;
+        }
     }
     
-    // ЧЕЛОВЕЧЕК 🏃
-    let p = game.player;
-    if (!p.invuln || Math.floor(Date.now()/100)%2===0) {
-        let px = p.x - cam, py = p.y;
-        // Тень
-        ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(px+p.w/2, GROUND+3, 18, 5, 0, 0, Math.PI*2); ctx.fill();
-        
-        let leg = (Date.now()/80) % (Math.PI*2);
-        let move = keys.left || keys.right;
-        let swing = move ? Math.sin(leg)*8 : 0;
-        let lean = move ? (keys.right?3:-3) : 0;
-        
-        // Ноги
-        ctx.fillStyle='#4A3728';
-        ctx.beginPath(); ctx.moveTo(px+8, py+p.h-8); ctx.lineTo(px+4+swing*0.5, py+p.h+4); ctx.lineTo(px+12, py+p.h+4); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(px+p.w-8, py+p.h-8); ctx.lineTo(px+p.w-4-swing*0.5, py+p.h+4); ctx.lineTo(px+p.w, py+p.h+4); ctx.fill();
-        // Тело
-        ctx.fillStyle='#C41E3A'; ctx.strokeStyle='#8B0000'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.roundRect(px+4+lean, py+8, p.w-8, p.h-16, 5); ctx.fill(); ctx.stroke();
-        // Ремень
-        ctx.fillStyle='#2F1B0E'; ctx.fillRect(px+3+lean, py+p.h-12, p.w-6, 4);
-        // Руки
-        let arm = move ? Math.sin(leg+Math.PI)*6 : 0;
-        ctx.beginPath(); ctx.moveTo(px+6+lean, py+12); ctx.lineTo(px-2+lean+arm, py+20); ctx.lineTo(px+2+lean+arm, py+26);
-        ctx.lineWidth=5; ctx.strokeStyle='#C41E3A'; ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(px+p.w-6+lean, py+12); ctx.lineTo(px+p.w+2+lean-arm, py+20); ctx.lineTo(px+p.w-2+lean-arm, py+26); ctx.stroke();
-        // Кисти
-        ctx.fillStyle='#FFDAB9'; ctx.beginPath(); ctx.arc(px+lean+arm, py+26, 3.5, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px+p.w-2+lean-arm, py+26, 3.5, 0, Math.PI*2); ctx.fill();
-        // Голова
-        ctx.fillStyle='#FFDAB9';
-        ctx.fillRect(px+10+lean, py+2, 6, 8);
-        ctx.beginPath(); ctx.ellipse(px+p.w/2+lean, py-2, 12, 14, 0, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle='#E8B89D'; ctx.stroke();
-        // Шляпа
-        ctx.fillStyle='#8B7355';
-        ctx.beginPath(); ctx.ellipse(px+p.w/2+lean, py-10, 18, 5, 0, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(px+p.w/2+lean, py-18, 11, 8, 0, 0, Math.PI*2); ctx.fill();
-        // Глаза
-        ctx.fillStyle='#FFF';
-        ctx.beginPath(); ctx.arc(px+9+lean+(keys.right?2:0), py-4, 3, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px+17+lean+(keys.right?2:0), py-4, 3, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle='#2C1810';
-        let look = keys.right ? 1.5 : (keys.left ? -1.5 : 0);
-        ctx.beginPath(); ctx.arc(px+9+lean+look, py-4, 2, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px+17+lean+look, py-4, 2, 0, Math.PI*2); ctx.fill();
-        // Улыбка
-        ctx.strokeStyle='#C0755A'; ctx.lineWidth=1.5;
-        ctx.beginPath(); ctx.arc(px+p.w/2+lean, py+2, 5, 0.1, Math.PI-0.1); ctx.stroke();
+    // Камера
+    game.cameraX = Math.max(0, Math.min(p.x - W / 3, 2800 - W));
+    
+    // Таймер неуязвимости
+    if (p.invulnerable > 0) {
+        p.invulnerable--;
     }
     
-    if (game.over) { ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,W,H); ctx.font='bold 36px Arial'; ctx.fillStyle='#F44'; ctx.textAlign='center'; ctx.fillText('GAME OVER',W/2,H/2); }
-    if (game.win) { ctx.fillStyle='rgba(0,50,0,0.7)'; ctx.fillRect(0,0,W,H); ctx.font='bold 32px Arial'; ctx.fillStyle='#FFD700'; ctx.fillText('СОКРОВИЩЕ!',W/2,H/2); }
+    // UI
+    document.getElementById('lives').textContent = game.lives;
+    document.getElementById('score').textContent = String(game.score).padStart(4, '0');
 }
 
-CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r) {
-    this.moveTo(x+r, y); this.lineTo(x+w-r, y); this.quadraticCurveTo(x+w, y, x+w, y+r);
-    this.lineTo(x+w, y+h-r); this.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-    this.lineTo(x+r, y+h); this.quadraticCurveTo(x, y+h, x, y+h-r);
-    this.lineTo(x, y+r); this.quadraticCurveTo(x, y, x+r, y); return this;
+function die() {
+    const p = game.player;
+    game.lives--;
+    p.invulnerable = 80;
+    p.fallingInWater = false;
+    p.waterFallProgress = 0;
+    p.x = 80;
+    p.y = GROUND_Y - 40;
+    p.vx = 0;
+    p.vy = 0;
+    
+    if (game.lives <= 0) {
+        game.gameOver = true;
+    }
+}
+
+// ========== ПРЫЖОК (вверх и в длину!) ==========
+function jump() {
+    const p = game.player;
+    if (p.onGround && !p.fallingInWater && !game.gameOver && !game.win) {
+        p.vy = -9.5;
+        // Добавляем горизонтальный импульс в направлении движения
+        if (keys.left) p.vx = -5.5;
+        else if (keys.right) p.vx = 5.5;
+        p.onGround = false;
+    }
+}
+
+// ========== ОТРИСОВКА ==========
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    
+    const cam = game.cameraX;
+    
+    // НЕБО
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#1a0533');
+    grad.addColorStop(0.4, '#4a1942');
+    grad.addColorStop(0.7, '#c94b22');
+    grad.addColorStop(1, '#f0a500');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    
+    // ЗВЁЗДЫ
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 20; i++) {
+        const sx = (i * 37 - cam * 0.1) % W;
+        ctx.beginPath();
+        ctx.arc(sx, 20 + i * 7, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // ДЕРЕВЬЯ НА ФОНЕ
+    world.trees.forEach(tree => {
+        const tx = tree.x - cam * 0.3;
+        if (tx > -50 && tx < W + 50) {
+            drawTree(tx, 180, tree.type, tree.scale);
+        }
+    });
+    
+    // ПЛАТФОРМЫ (ЗЕМЛЯ)
+    world.platforms.forEach(pl => {
+        const px = pl.x - cam;
+        // Трава сверху
+        ctx.fillStyle = '#2d5a27';
+        ctx.fillRect(px, pl.y - 4, pl.width, 6);
+        // Земля
+        ctx.fillStyle = '#6b4423';
+        ctx.fillRect(px, pl.y, pl.width, pl.height);
+        // Текстура
+        ctx.fillStyle = '#5a3520';
+        for (let i = 0; i < pl.width; i += 8) {
+            ctx.fillRect(px + i, pl.y + 5, 4, 3);
+        }
+    });
+    
+    // ЯМЫ С ВОДОЙ
+    world.waterPits.forEach(pit => {
+        const px = pit.x - cam;
+        // Тёмная яма
+        ctx.fillStyle = '#1a0a2e';
+        ctx.fillRect(px, pit.y, pit.width, 35);
+        // Вода
+        ctx.fillStyle = '#1a6b8a';
+        ctx.fillRect(px, WATER_Y - 8 - cam * 0.02, pit.width, 20);
+        // Волны
+        ctx.strokeStyle = '#4ac8e8';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < pit.width; i += 12) {
+            const wave = Math.sin(Date.now() / 200 + i) * 3;
+            ctx.beginPath();
+            ctx.moveTo(px + i, WATER_Y - 5 + wave);
+            ctx.lineTo(px + i + 8, WATER_Y - 5 - wave);
+            ctx.stroke();
+        }
+    });
+    
+    // ЛИАНЫ
+    world.vines.forEach(v => {
+        const vx = v.x - cam;
+        ctx.strokeStyle = '#3d7a3d';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(vx, v.y);
+        ctx.lineTo(vx + Math.sin(Date.now() / 300) * 3, v.y + v.height);
+        ctx.stroke();
+        // Листья
+        ctx.fillStyle = '#4CAF50';
+        ctx.beginPath();
+        ctx.ellipse(vx - 8 + Math.sin(Date.now() / 250) * 2, v.y + 30, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    
+    // КРОКОДИЛЫ 🐊
+    world.crocodiles.forEach(c => {
+        const cx = c.x - cam;
+        const dir = c.dir;
+        
+        // Тень
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath();
+        ctx.ellipse(cx + c.width/2, GROUND_Y + 2, c.width/2, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // ХВОСТ (анимированный)
+        ctx.fillStyle = '#2d6b2d';
+        const tailSwing = Math.sin(c.tailPhase) * 8;
+        ctx.beginPath();
+        ctx.moveTo(cx + (dir > 0 ? 0 : c.width), c.y + 8);
+        ctx.lineTo(cx + (dir > 0 ? -15 : c.width + 15) + tailSwing * dir, c.y + 4);
+        ctx.lineTo(cx + (dir > 0 ? -20 : c.width + 20) + tailSwing * dir * 1.5, c.y + 12);
+        ctx.closePath();
+        ctx.fill();
+        
+        // ТЕЛО
+        ctx.fillStyle = '#1a5c1a';
+        ctx.beginPath();
+        ctx.roundRect(cx, c.y, c.width, c.height, 8);
+        ctx.fill();
+        
+        // ШИПЫ
+        ctx.fillStyle = '#0d3d0d';
+        for (let i = 5; i < c.width - 5; i += 8) {
+            ctx.beginPath();
+            ctx.moveTo(cx + i, c.y);
+            ctx.lineTo(cx + i + 4, c.y - 5);
+            ctx.lineTo(cx + i + 8, c.y);
+            ctx.fill();
+        }
+        
+        // НОГИ (анимированные)
+        ctx.fillStyle = '#1a5c1a';
+        const legSwing = Math.sin(c.legPhase) * 4;
+        // Передние ноги
+        ctx.fillRect(cx + 10 + legSwing, c.y + c.height - 2, 6, 6);
+        ctx.fillRect(cx + c.width - 16 - legSwing, c.y + c.height - 2, 6, 6);
+        // Задние ноги
+        ctx.fillRect(cx + 25 + legSwing * 0.7, c.y + c.height - 2, 6, 6);
+        ctx.fillRect(cx + c.width - 31 - legSwing * 0.7, c.y + c.height - 2, 6, 6);
+        
+        // ГЛАЗА
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath();
+        ctx.arc(cx + (dir > 0 ? 10 : c.width - 10), c.y + 6, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ff0000';
+        ctx.beginPath();
+        ctx.arc(cx + (dir > 0 ? 12 : c.width - 12), c.y + 6, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(cx + (dir > 0 ? 13 : c.width - 13), c.y + 5, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // ПАСТЬ
+        ctx.fillStyle = '#8b0000';
+        ctx.beginPath();
+        ctx.ellipse(cx + (dir > 0 ? 3 : c.width - 3), c.y + 10, 5, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Зубы
+        ctx.fillStyle = '#fff';
+        for (let i = 0; i < 3; i++) {
+            ctx.fillRect(cx + (dir > 0 ? 1 + i*2 : c.width - 5 - i*2), c.y + 8, 2, 3);
+        }
+    });
+    
+    // СОКРОВИЩЕ
+    const t = world.treasure;
+    if (t && !t.collected) {
+        const tx = t.x - cam;
+        const glow = Math.sin(t.glowPhase) * 5 + 10;
+        
+        // Свечение
+        ctx.fillStyle = `rgba(255, 215, 0, ${0.2 + Math.sin(t.glowPhase) * 0.1})`;
+        ctx.beginPath();
+        ctx.arc(tx + t.width/2, t.y + t.height/2, t.width/2 + glow, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Сундук
+        ctx.fillStyle = '#6b3a1f';
+        ctx.fillRect(tx, t.y, t.width, t.height);
+        ctx.fillStyle = '#d4a030';
+        ctx.fillRect(tx, t.y - 3, t.width, 5);
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.arc(tx + t.width/2, t.y - 8, 8, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // ИГРОК
+    drawPlayer(cam);
+    
+    // ЭФФЕКТ ПАДЕНИЯ В ВОДУ
+    if (game.player.fallingInWater) {
+        const p = game.player;
+        const px = p.x - cam;
+        const progress = p.waterFallProgress;
+        
+        // Брызги
+        ctx.fillStyle = `rgba(100, 200, 255, ${1 - progress})`;
+        for (let i = 0; i < 8; i++) {
+            const angle = i * Math.PI / 4 + Date.now() / 50;
+            const dist = progress * 30;
+            ctx.beginPath();
+            ctx.arc(px + p.width/2 + Math.cos(angle) * dist, 
+                   WATER_Y - 5 + Math.sin(angle) * dist * 0.5, 
+                   3 + progress * 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Круги на воде
+        ctx.strokeStyle = `rgba(255, 255, 255, ${1 - progress})`;
+        ctx.lineWidth = 2;
+        for (let i = 1; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.ellipse(px + p.width/2, WATER_Y, i * 15 * progress, 5 * progress, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+    
+    // ЭКРАНЫ
+    if (game.gameOver) {
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.font = 'bold 40px Arial';
+        ctx.fillStyle = '#ff4444';
+        ctx.textAlign = 'center';
+        ctx.fillText('💀 GAME OVER 💀', W/2, H/2);
+    }
+    
+    if (game.win) {
+        ctx.fillStyle = 'rgba(0,40,0,0.8)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.font = 'bold 36px Arial';
+        ctx.fillStyle = '#FFD700';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏆 СОКРОВИЩЕ! 🏆', W/2, H/2 - 20);
+        ctx.font = '24px Arial';
+        ctx.fillText('Score: ' + game.score, W/2, H/2 + 30);
+    }
+}
+
+function drawTree(x, y, type, scale) {
+    const w = 25 * scale;
+    const h = 80 * scale;
+    
+    // Ствол
+    ctx.fillStyle = '#5d3a1a';
+    ctx.fillRect(x - w/4, y - h/2, w/2, h);
+    
+    // Крона
+    ctx.fillStyle = type === 0 ? '#1a6b2e' : (type === 1 ? '#2d8a4e' : '#1e5c2b');
+    ctx.beginPath();
+    ctx.arc(x, y - h/2 - 10, w * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x - 10 * scale, y - h/2, w * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 10 * scale, y - h/2, w * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawPlayer(cam) {
+    const p = game.player;
+    
+    if (p.fallingInWater) return; // Не рисуем, показываем эффект
+    
+    if (p.invulnerable > 0 && Math.floor(Date.now() / 80) % 2 === 0) return;
+    
+    const px = p.x - cam;
+    const py = p.y;
+    const facing = p.facing;
+    
+    // ТЕНЬ
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(px + p.width/2, GROUND_Y + 4, 18, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // АНИМАЦИЯ БЕГА
+    const isMoving = Math.abs(p.vx) > 0.5 && p.onGround;
+    const legPhase = Date.now() / 60;
+    const legSwing = isMoving ? Math.sin(legPhase) * 7 : 0;
+    const armSwing = isMoving ? Math.sin(legPhase + Math.PI) * 6 : 0;
+    const bodyLean = isMoving ? p.vx * 0.3 : 0;
+    
+    // НОГИ
+    ctx.fillStyle = '#3d5a3d';
+    ctx.strokeStyle = '#2a4a2a';
+    ctx.lineWidth = 2;
+    
+    // Левая нога
+    ctx.beginPath();
+    ctx.moveTo(px + 6 + bodyLean, py + p.height - 6);
+    ctx.lineTo(px + 2 + legSwing + bodyLean, py + p.height + 4);
+    ctx.lineTo(px + 12 + bodyLean, py + p.height + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Правая нога
+    ctx.beginPath();
+    ctx.moveTo(px + p.width - 6 + bodyLean, py + p.height - 6);
+    ctx.lineTo(px + p.width - 2 - legSwing + bodyLean, py + p.height + 4);
+    ctx.lineTo(px + p.width - 12 + bodyLean, py + p.height + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // БОТИНКИ
+    ctx.fillStyle = '#5c3a1e';
+    ctx.fillRect(px + 1 + legSwing * 0.7 + bodyLean, py + p.height + 2, 12, 5);
+    ctx.fillRect(px + p.width - 13 - legSwing * 0.7 + bodyLean, py + p.height + 2, 12, 5);
+    
+    // ТЕЛО
+    ctx.fillStyle = '#c41e3a';
+    ctx.strokeStyle = '#8b0000';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(px + 3 + bodyLean, py + 8, p.width - 6, p.height - 14, 5);
+    ctx.fill();
+    ctx.stroke();
+    
+    // РЕМЕНЬ
+    ctx.fillStyle = '#2f1b0e';
+    ctx.fillRect(px + 2 + bodyLean, py + p.height - 12, p.width - 4, 4);
+    ctx.fillStyle = '#daa520';
+    ctx.fillRect(px + p.width/2 - 3 + bodyLean, py + p.height - 12, 6, 4);
+    
+    // РУКИ
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#c41e3a';
+    
+    // Левая рука
+    ctx.beginPath();
+    ctx.moveTo(px + 5 + bodyLean, py + 12);
+    ctx.lineTo(px - 2 + armSwing + bodyLean, py + 20);
+    ctx.lineTo(px + 2 + armSwing + bodyLean, py + 26);
+    ctx.stroke();
+    
+    // Правая рука
+    ctx.beginPath();
+    ctx.moveTo(px + p.width - 5 + bodyLean, py + 12);
+    ctx.lineTo(px + p.width + 2 - armSwing + bodyLean, py + 20);
+    ctx.lineTo(px + p.width - 2 - armSwing + bodyLean, py + 26);
+    ctx.stroke();
+    
+    // КИСТИ
+    ctx.fillStyle = '#ffdab9';
+    ctx.beginPath();
+    ctx.arc(px + armSwing + bodyLean, py + 26, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + p.width - 2 - armSwing + bodyLean, py + 26, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // ГОЛОВА
+    ctx.fillStyle = '#ffdab9';
+    ctx.strokeStyle = '#e8b89d';
+    ctx.lineWidth = 2;
+    
+    // Шея
+    ctx.fillRect(px + 9 + bodyLean, py + 2, 6, 7);
+    
+    // Голова
+    ctx.beginPath();
+    ctx.ellipse(px + p.width/2 + bodyLean, py - 2, 12, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    
+    // ШЛЯПА
+    ctx.fillStyle = '#8b7355';
+    ctx.strokeStyle = '#6b5335';
+    ctx.beginPath();
+    ctx.ellipse(px + p.width/2 + bodyLean, py - 10, 18, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(px + p.width/2 + bodyLean, py - 18, 11, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#2f1b0e';
+    ctx.fillRect(px + 4 + bodyLean, py - 15, 16, 3);
+    
+    // ЛИЦО
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(px + 9 + bodyLean + (facing > 0 ? 1 : -1), py - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + 17 + bodyLean + (facing > 0 ? 1 : -1), py - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Зрачки
+    ctx.fillStyle = '#2c1810';
+    ctx.beginPath();
+    ctx.arc(px + 9 + bodyLean + facing * 1.5, py - 4, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + 17 + bodyLean + facing * 1.5, py - 4, 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Блики
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(px + 8 + bodyLean + facing, py - 5, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + 16 + bodyLean + facing, py - 5, 1, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Улыбка
+    ctx.strokeStyle = '#c0755a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(px + p.width/2 + bodyLean, py + 2, 5, 0.1, Math.PI - 0.1);
+    ctx.stroke();
+}
+
+CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    return this;
 };
 
-function loop() { upd(); draw(); requestAnimationFrame(loop); }
+// ========== ИГРОВОЙ ЦИКЛ ==========
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
 
-// Управление
-document.getElementById('leftBtn').addEventListener('touchstart', e => { e.preventDefault(); keys.left=true; });
-document.getElementById('leftBtn').addEventListener('touchend', () => keys.left=false);
-document.getElementById('rightBtn').addEventListener('touchstart', e => { e.preventDefault(); keys.right=true; });
-document.getElementById('rightBtn').addEventListener('touchend', () => keys.right=false);
-document.getElementById('jumpBtn').addEventListener('touchstart', e => {
-    e.preventDefault();
-    if (game.player.onGround && !game.over && !game.win) game.player.vy = -8;
-});
+// ========== УПРАВЛЕНИЕ ==========
+const leftBtn = document.getElementById('leftBtn');
+const rightBtn = document.getElementById('rightBtn');
+const jumpBtn = document.getElementById('jumpBtn');
+
+leftBtn.addEventListener('touchstart', e => { e.preventDefault(); keys.left = true; });
+leftBtn.addEventListener('touchend', () => keys.left = false);
+leftBtn.addEventListener('mousedown', e => { e.preventDefault(); keys.left = true; });
+leftBtn.addEventListener('mouseup', () => keys.left = false);
+leftBtn.addEventListener('mouseleave', () => keys.left = false);
+
+rightBtn.addEventListener('touchstart', e => { e.preventDefault(); keys.right = true; });
+rightBtn.addEventListener('touchend', () => keys.right = false);
+rightBtn.addEventListener('mousedown', e => { e.preventDefault(); keys.right = true; });
+rightBtn.addEventListener('mouseup', () => keys.right = false);
+rightBtn.addEventListener('mouseleave', () => keys.right = false);
+
+jumpBtn.addEventListener('touchstart', e => { e.preventDefault(); jump(); });
+jumpBtn.addEventListener('mousedown', e => { e.preventDefault(); jump(); });
+
 document.getElementById('restartBtn').addEventListener('click', () => {
-    gen();
-    game = { player:{ x:100, y:GROUND-35, vy:0, w:25, h:35, onGround:true }, lives:3, score:0, camX:0, over:false, win:false };
+    generateWorld();
+    game = {
+        player: { x: 80, y: GROUND_Y - 40, vx: 0, vy: 0, width: 22, height: 38, onGround: false, inWater: false, facing: 1, invulnerable: 0, fallingInWater: false, waterFallProgress: 0 },
+        lives: 3, score: 0, cameraX: 0, gameOver: false, win: false
+    };
 });
 
-gen(); loop();
+// Клавиатура
+window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); keys.left = true; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); keys.right = true; }
+    if (e.key === ' ' || e.key === 'Space' || e.key === 'ArrowUp') { 
+        e.preventDefault(); 
+        jump(); 
+    }
+});
+window.addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); keys.left = false; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); keys.right = false; }
+});
+
+// Старт!
+generateWorld();
+gameLoop();
 </script>
 </body>
 </html>
